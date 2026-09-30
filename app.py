@@ -2,83 +2,78 @@ import os
 import pandas as pd
 import streamlit as st
 
-DATA_FILE = "order_data.csv"
+DATA_FILE = "lion_orders_data.csv"
 
 st.set_page_config(
-    page_title="Order & Financial Management System",
-    page_icon="🛡️",
+    page_title="LionIndustry - Underwear OEM Order Management System",
+    page_icon="👙",
     layout="wide",
 )
 
-st.title("🛡️ Order & Financial Management System")
+st.title("👙 LionIndustry Order & Operations Tracker")
 st.caption(
-    "Automated tracking for Orders, Advance Payments, Balance Payments, Shipments, Invoicing, and Tax Refunds with built-in risk warnings."
+    "End-to-End Workflow & Tax Refund Management (Brand Owner ↔ LionIndustry ↔ Manufacturer)"
 )
 
-# Status Dropdown Options
-STATUS_ORDER = [
-    "Pending Confirmation",
-    "Confirmed",
-    "In Production",
-    "Completed",
-    "Cancelled",
-]
-STATUS_ADVANCE = ["Unpaid", "Partially Paid", "Fully Paid"]
-STATUS_BALANCE = ["Not Due", "Overdue / Follow-up", "Partially Paid", "Fully Paid"]
-STATUS_SHIPMENT = [
-    "Unshipped",
-    "Partially Shipped",
-    "Customs Cleared",
-    "Delivered",
-]
-STATUS_PAYMENT = [
-    "Unsettled",
-    "Advance Received",
-    "Balance Pending",
-    "Fully Settled",
-]
-STATUS_INVOICE = [
-    "Uninvoiced",
-    "VAT Invoice Issued",
-    "Invoice Sent",
-    "Input Tax Received",
-]
-STATUS_TAX_REFUND = [
-    "N/A",
-    "Pending Filing",
-    "Filing in Progress",
-    "Refund Received",
+# Define the exact 21 workflow stages provided
+WORKFLOW_STAGES = [
+    # Phase 1: Pre-PO
+    "1. Sample Received",
+    "2. Price Quoted",
+    "3. Price Agreed by Buyer",
+    # Phase 2: PO & Sampling
+    "4. PO Issued & Advance Payment",
+    "5. Prototype Sample (Making/Shipped/Approved)",
+    "6. Fitting Sample (Making/Shipped/Approved)",
+    "7. Pre-Production Sample (Making/Shipped/Approved)",
+    # Phase 3: Production & Shipping
+    "8. Bulk Production in Progress",
+    "9. Goods Ready",
+    "10. Inspection Completed & Approved",
+    "11. Balance Payment Received",
+    "12. Shipping Booked & Goods Shipped",
+    "13. Forwarder Paid",
+    # Phase 4: Customs, VAT & Tax Refund
+    "14. B/L & Customs Declaration Received",
+    "15. Factory VAT Receipts Received",
+    "16. Tax Return Applied & Completed",
 ]
 
-# Default Initial Data
+# Sample Initial Data tailored for Underwear OEM
 DEFAULT_DATA = [
     {
-        "Order ID": "PO20260901",
-        "Client/Supplier": "Client A",
-        "Order Status": "In Production",
-        "Advance Status": "Fully Paid",
-        "Balance Status": "Not Due",
-        "Shipment Status": "Unshipped",
-        "Payment Status": "Advance Received",
-        "Invoice Status": "Uninvoiced",
-        "Tax Refund Status": "Pending Filing",
-        "Total Amount ($)": 50000.0,
-        "Received Amount ($)": 15000.0,
-        "Notes": "Expected shipment next month",
+        "Order PO #": "PO-2026-UW01",
+        "Brand Owner / Buyer": "Alpha Apparel (US)",
+        "Manufacturer / Factory": "Yiwu Textile Factory A",
+        "Item Description": "Men's Seamless Boxer Briefs (10,000 pcs)",
+        "Current Stage": "7. Pre-Production Sample (Making/Shipped/Approved)",
+        "PPS Approval": "Approved",
+        "Inspection Status": "Pending",
+        "Advance Payment": "Received",
+        "Balance Payment": "Pending",
+        "Customs Declaration": "Missing",
+        "Factory VAT Receipt": "Pending",
+        "Tax Refund Status": "Not Applied",
+        "Total PO Amount ($)": 45000.0,
+        "Deposit Received ($)": 13500.0,
+        "Notes": "PPS approved on Sept 20. Preparing bulk raw materials.",
     },
     {
-        "Order ID": "PO20260815",
-        "Client/Supplier": "Client B",
-        "Order Status": "Completed",
-        "Advance Status": "Fully Paid",
-        "Balance Status": "Overdue / Follow-up",
-        "Shipment Status": "Customs Cleared",
-        "Payment Status": "Balance Pending",
-        "Invoice Status": "Uninvoiced",  # Anomaly: Shipped but Uninvoiced
-        "Tax Refund Status": "Pending Filing",  # Anomaly: Shipped but Pending Refund
-        "Total Amount ($)": 120000.0,
-        "Received Amount ($)": 36000.0,  # Anomaly: Shipped but Balance Unpaid
-        "Notes": "Bill of Lading sent, urgent follow-up required",
+        "Order PO #": "PO-2026-UW02",
+        "Brand Owner / Buyer": "Luxe Intimates (EU)",
+        "Manufacturer / Factory": "Shantou Bra Mfg Co.",
+        "Item Description": "Lace Bralette Set (5,000 pcs)",
+        "Current Stage": "13. Forwarder Paid",
+        "PPS Approval": "Approved",
+        "Inspection Status": "Passed",
+        "Advance Payment": "Received",
+        "Balance Payment": "Received",
+        "Customs Declaration": "Received",
+        "Factory VAT Receipt": "Missing",  # Risk Alert: Missing VAT Receipt
+        "Tax Refund Status": "Pending Filing",
+        "Total PO Amount ($)": 32000.0,
+        "Deposit Received ($)": 32000.0,
+        "Notes": "Goods shipped. Urgent follow-up needed with factory for VAT invoice.",
     },
 ]
 
@@ -102,72 +97,46 @@ def save_data(df):
 if "order_df" not in st.session_state:
     st.session_state.order_df = load_data()
 
-# ================= Sidebar: Data Import & Single Entry =================
+df = st.session_state.order_df
+
+# ================= SIDEBAR: ADD & IMPORT ORDERS =================
 with st.sidebar:
-    st.header("📂 Data Management & Entry")
+    st.header("⚙️ Order Management")
 
-    st.subheader("Batch Import")
-    uploaded_file = st.file_uploader(
-        "Upload Excel or CSV File", type=["csv", "xlsx"]
-    )
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                new_df = pd.read_csv(uploaded_file)
-            else:
-                new_df = pd.read_excel(uploaded_file)
-
-            import_option = st.radio(
-                "Import Mode", ["Overwrite Current Ledger", "Append to Ledger"]
-            )
-            if st.button("Confirm Import"):
-                if import_option == "Overwrite Current Ledger":
-                    st.session_state.order_df = new_df
-                else:
-                    st.session_state.order_df = pd.concat(
-                        [st.session_state.order_df, new_df], ignore_index=True
-                    )
-                save_data(st.session_state.order_df)
-                st.success("Data imported successfully!")
-                st.rerun()
-        except Exception as e:
-            st.error(f"Error parsing file: {e}")
-
-    st.markdown("---")
-
-    st.subheader("➕ Add Single Order")
-    with st.form("new_order_form", clear_on_submit=True):
-        po_num = st.text_input("Order ID", value="PO2026001")
-        client = st.text_input("Client / Supplier", value="")
-        order_st = st.selectbox("Order Status", STATUS_ORDER)
-        adv_st = st.selectbox("Advance Status", STATUS_ADVANCE)
-        bal_st = st.selectbox("Balance Status", STATUS_BALANCE)
-        ship_st = st.selectbox("Shipment Status", STATUS_SHIPMENT)
-        pay_st = st.selectbox("Payment Status", STATUS_PAYMENT)
-        inv_st = st.selectbox("Invoice Status", STATUS_INVOICE)
-        tax_st = st.selectbox("Tax Refund Status", STATUS_TAX_REFUND)
-        total_amt = st.number_input(
-            "Total Amount ($)", min_value=0.0, value=0.0, step=1000.0
+    st.subheader("➕ Create New Order / Sampling Request")
+    with st.form("add_order_form", clear_on_submit=True):
+        po_num = st.text_input("PO / Sample Tracking #", value="PO-2026-UW03")
+        buyer = st.text_input("Brand Owner / Buyer", value="")
+        factory = st.text_input("Manufacturer / Factory", value="")
+        item_desc = st.text_input("Item / Style Description", value="")
+        stage = st.selectbox("Initial Workflow Stage", WORKFLOW_STAGES)
+        po_amt = st.number_input(
+            "Total PO Amount ($)", min_value=0.0, value=0.0, step=1000.0
         )
-        paid_amt = st.number_input(
-            "Received Amount ($)", min_value=0.0, value=0.0, step=1000.0
+        dep_amt = st.number_input(
+            "Deposit Received ($)", min_value=0.0, value=0.0, step=500.0
         )
-        notes = st.text_area("Notes", value="")
+        notes = st.text_area("Notes / Specifications", value="")
 
-        submitted = st.form_submit_button("Save Order")
+        submitted = st.form_submit_button("Save New Order")
         if submitted:
             new_row = {
-                "Order ID": po_num,
-                "Client/Supplier": client,
-                "Order Status": order_st,
-                "Advance Status": adv_st,
-                "Balance Status": bal_st,
-                "Shipment Status": ship_st,
-                "Payment Status": pay_st,
-                "Invoice Status": inv_st,
-                "Tax Refund Status": tax_st,
-                "Total Amount ($)": total_amt,
-                "Received Amount ($)": paid_amt,
+                "Order PO #": po_num,
+                "Brand Owner / Buyer": buyer,
+                "Manufacturer / Factory": factory,
+                "Item Description": item_desc,
+                "Current Stage": stage,
+                "PPS Approval": "Pending",
+                "Inspection Status": "Pending",
+                "Advance Payment": (
+                    "Received" if dep_amt > 0 else "Pending"
+                ),
+                "Balance Payment": "Pending",
+                "Customs Declaration": "Missing",
+                "Factory VAT Receipt": "Missing",
+                "Tax Refund Status": "Not Applied",
+                "Total PO Amount ($)": po_amt,
+                "Deposit Received ($)": dep_amt,
                 "Notes": notes,
             }
             st.session_state.order_df = pd.concat(
@@ -175,185 +144,190 @@ with st.sidebar:
                 ignore_index=True,
             )
             save_data(st.session_state.order_df)
-            st.success(f"Order {po_num} added successfully!")
+            st.success(f"Order {po_num} created successfully!")
             st.rerun()
 
-# ================= Anomaly Detection Engine =================
-df = st.session_state.order_df
+    st.markdown("---")
+    st.subheader("📂 Batch Import / Export")
+    uploaded_file = st.file_uploader(
+        "Upload Excel / CSV Ledger", type=["csv", "xlsx"]
+    )
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith(".csv"):
+                imported_df = pd.read_csv(uploaded_file)
+            else:
+                imported_df = pd.read_excel(uploaded_file)
+            st.session_state.order_df = imported_df
+            save_data(imported_df)
+            st.success("Ledger imported and updated successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
 
-# Anomaly 1: Shipped/Delivered but Balance not fully paid
-anomaly_unpaid = df[
-    df["Shipment Status"].isin(["Customs Cleared", "Delivered"])
-    & (df["Balance Status"] != "Fully Paid")
+# ================= TOP METRICS & RISKS =================
+total_orders = len(df)
+shipped_orders = df[
+    df["Current Stage"].isin([
+        "12. Shipping Booked & Goods Shipped",
+        "13. Forwarder Paid",
+        "14. B/L & Customs Declaration Received",
+        "15. Factory VAT Receipts Received",
+        "16. Tax Return Applied & Completed",
+    ])
 ]
 
-# Anomaly 2: Shipped but Uninvoiced
-anomaly_uninvoiced = df[
-    df["Shipment Status"].isin(["Customs Cleared", "Delivered"])
-    & (df["Invoice Status"] == "Uninvoiced")
+# Risk Logic: Shipped but missing VAT Receipts from factory
+missing_vat = df[
+    df["Current Stage"].isin([
+        "12. Shipping Booked & Goods Shipped",
+        "13. Forwarder Paid",
+        "14. B/L & Customs Declaration Received",
+    ])
+    & (df["Factory VAT Receipt"] == "Missing")
 ]
 
-# Anomaly 3: Shipped but Tax Refund Pending
-anomaly_untaxed = df[
-    df["Shipment Status"].isin(["Customs Cleared", "Delivered"])
-    & df["Tax Refund Status"].isin(["Pending Filing"])
+# Risk Logic: Shipped & VAT received, but Tax Refund not completed
+pending_tax_refund = df[
+    (df["Customs Declaration"] == "Received")
+    & (df["Factory VAT Receipt"] == "Received")
+    & (df["Tax Refund Status"] != "Completed")
 ]
-
-# Metrics Calculation
-total_orders_val = df["Total Amount ($)"].sum()
-total_received_val = df["Received Amount ($)"].sum()
-total_pending_val = total_orders_val - total_received_val
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Orders", f"{len(df)}")
-col2.metric("Total Order Value", f"${total_orders_val:,.2f}")
-col3.metric("Total Received", f"${total_received_val:,.2f}")
-col4.metric(
-    "Pending Balance / Gap",
-    f"${total_pending_val:,.2f}",
-    delta=f"-${total_pending_val:,.2f}" if total_pending_val > 0 else "Settled",
-)
+col1.metric("Total Active Orders", f"{total_orders}")
+col2.metric("Shipped Orders", f"{len(shipped_orders)}")
+col3.metric("Missing Factory VAT Invoices", f"{len(missing_vat)}")
+col4.metric("Pending Tax Refunds", f"{len(pending_tax_refund)}")
 
 st.markdown("---")
 
-# Risk Warning Dashboard
-st.subheader("🚨 Automated Reconciliation Risk Dashboard")
-num_anomalies = (
-    len(anomaly_unpaid) + len(anomaly_uninvoiced) + len(anomaly_untaxed)
-)
+# ================= RISK & FOLLOW-UP DASHBOARD =================
+st.subheader("🚨 Key Bottlenecks & Critical Action Items")
 
-if num_anomalies == 0:
-    st.success("✅ No status mismatches or financial delays detected.")
-else:
-    st.warning(f"⚠️ **{num_anomalies} process alignment risk(s)** detected:")
-    a_tab1, a_tab2, a_tab3 = st.tabs([
-        f"🔴 Shipped - Unpaid Balance ({len(anomaly_unpaid)})",
-        f"🟡 Shipped - Uninvoiced ({len(anomaly_uninvoiced)})",
-        f"🔵 Shipped - Tax Refund Pending ({len(anomaly_untaxed)})",
-    ])
+tab_vat, tab_tax, tab_samples = st.tabs([
+    f"🧾 Missing Factory VAT Receipts ({len(missing_vat)})",
+    f"💰 Pending Tax Refunds ({len(pending_tax_refund)})",
+    "🔍 Active Sampling / Pre-PO Orders",
+])
 
-    with a_tab1:
-        if not anomaly_unpaid.empty:
-            st.error("Orders shipped/delivered but balance is NOT fully paid:")
-            st.dataframe(
-                anomaly_unpaid[
-                    [
-                        "Order ID",
-                        "Client/Supplier",
-                        "Shipment Status",
-                        "Balance Status",
-                        "Total Amount ($)",
-                        "Received Amount ($)",
-                        "Notes",
-                    ]
-                ],
-                use_container_width=True,
-            )
-        else:
-            st.info("No issues.")
+with tab_vat:
+    if not missing_vat.empty:
+        st.error(
+            "Goods are shipped, but the factory has NOT provided VAT invoices needed for tax refund:"
+        )
+        st.dataframe(
+            missing_vat[
+                [
+                    "Order PO #",
+                    "Brand Owner / Buyer",
+                    "Manufacturer / Factory",
+                    "Current Stage",
+                    "Factory VAT Receipt",
+                    "Notes",
+                ]
+            ],
+            use_container_width=True,
+        )
+    else:
+        st.info("No missing VAT receipts for shipped orders.")
 
-    with a_tab2:
-        if not anomaly_uninvoiced.empty:
-            st.warning("Orders shipped but invoice has NOT been issued:")
-            st.dataframe(
-                anomaly_uninvoiced[
-                    [
-                        "Order ID",
-                        "Client/Supplier",
-                        "Shipment Status",
-                        "Invoice Status",
-                        "Notes",
-                    ]
-                ],
-                use_container_width=True,
-            )
-        else:
-            st.info("No issues.")
+with tab_tax:
+    if not pending_tax_refund.empty:
+        st.warning(
+            "Both Customs Declaration & Factory VAT Receipts are ready! Ready to file for Tax Refund:"
+        )
+        st.dataframe(
+            pending_tax_refund[
+                [
+                    "Order PO #",
+                    "Brand Owner / Buyer",
+                    "Manufacturer / Factory",
+                    "Customs Declaration",
+                    "Factory VAT Receipt",
+                    "Tax Refund Status",
+                    "Notes",
+                ]
+            ],
+            use_container_width=True,
+        )
+    else:
+        st.info("No orders currently waiting for tax refund filing.")
 
-    with a_tab3:
-        if not anomaly_untaxed.empty:
-            st.info("Orders shipped requiring tax refund filing:")
-            st.dataframe(
-                anomaly_untaxed[
-                    [
-                        "Order ID",
-                        "Client/Supplier",
-                        "Shipment Status",
-                        "Tax Refund Status",
-                        "Notes",
-                    ]
-                ],
-                use_container_width=True,
-            )
-        else:
-            st.info("No issues.")
+with tab_samples:
+    sampling_orders = df[
+        df["Current Stage"].str.contains("Sample|Price|PO Issued", regex=True)
+    ]
+    if not sampling_orders.empty:
+        st.dataframe(
+            sampling_orders[
+                [
+                    "Order PO #",
+                    "Brand Owner / Buyer",
+                    "Item Description",
+                    "Current Stage",
+                    "PPS Approval",
+                    "Notes",
+                ]
+            ],
+            use_container_width=True,
+        )
+    else:
+        st.info("No active pre-PO or sampling orders.")
 
 st.markdown("---")
 
-# Interactive Data Table
-st.subheader("🔍 Interactive Ledger (Double-click to Edit)")
-f_col1, f_col2, f_col3 = st.columns(3)
-with f_col1:
-    filter_bal = st.multiselect("Filter Balance Status", options=STATUS_BALANCE)
-with f_col2:
-    filter_ship = st.multiselect(
-        "Filter Shipment Status", options=STATUS_SHIPMENT
-    )
-with f_col3:
-    filter_tax = st.multiselect(
-        "Filter Tax Refund Status", options=STATUS_TAX_REFUND
-    )
-
-filtered_df = df.copy()
-if filter_bal:
-    filtered_df = filtered_df[filtered_df["Balance Status"].isin(filter_bal)]
-if filter_ship:
-    filtered_df = filtered_df[filtered_df["Shipment Status"].isin(filter_ship)]
-if filter_tax:
-    filtered_df = filtered_df[filtered_df["Tax Refund Status"].isin(filter_tax)]
+# ================= MASTER ORDER PIPELINE TABLE =================
+st.subheader("📊 Master Workflow Table (Double-click any cell to edit)")
 
 edited_df = st.data_editor(
-    filtered_df,
+    df,
     num_rows="dynamic",
     column_config={
-        "Order Status": st.column_config.SelectboxColumn(
-            options=STATUS_ORDER, required=True
+        "Current Stage": st.column_config.SelectboxColumn(
+            options=WORKFLOW_STAGES, required=True
         ),
-        "Advance Status": st.column_config.SelectboxColumn(
-            options=STATUS_ADVANCE, required=True
+        "PPS Approval": st.column_config.SelectboxColumn(
+            options=["Pending", "Shipped", "Approved", "Rejected/Revision"],
+            required=True,
         ),
-        "Balance Status": st.column_config.SelectboxColumn(
-            options=STATUS_BALANCE, required=True
+        "Inspection Status": st.column_config.SelectboxColumn(
+            options=["Pending", "Scheduled", "Passed", "Failed"], required=True
         ),
-        "Shipment Status": st.column_config.SelectboxColumn(
-            options=STATUS_SHIPMENT, required=True
+        "Advance Payment": st.column_config.SelectboxColumn(
+            options=["Pending", "Partial", "Received"], required=True
         ),
-        "Payment Status": st.column_config.SelectboxColumn(
-            options=STATUS_PAYMENT, required=True
+        "Balance Payment": st.column_config.SelectboxColumn(
+            options=["Pending", "Received"], required=True
         ),
-        "Invoice Status": st.column_config.SelectboxColumn(
-            options=STATUS_INVOICE, required=True
+        "Customs Declaration": st.column_config.SelectboxColumn(
+            options=["Missing", "Received"], required=True
+        ),
+        "Factory VAT Receipt": st.column_config.SelectboxColumn(
+            options=["Missing", "Pending", "Received"], required=True
         ),
         "Tax Refund Status": st.column_config.SelectboxColumn(
-            options=STATUS_TAX_REFUND, required=True
+            options=["Not Applied", "Pending Filing", "Filed", "Completed"],
+            required=True,
         ),
-        "Total Amount ($)": st.column_config.NumberColumn(format="$%.2f"),
-        "Received Amount ($)": st.column_config.NumberColumn(format="$%.2f"),
+        "Total PO Amount ($)": st.column_config.NumberColumn(format="$%.2f"),
+        "Deposit Received ($)": st.column_config.NumberColumn(format="$%.2f"),
     },
     use_container_width=True,
-    key="editor",
+    key="master_editor",
 )
 
-if not edited_df.equals(filtered_df):
+if not edited_df.equals(df):
     st.session_state.order_df.update(edited_df)
     save_data(st.session_state.order_df)
     st.toast("💾 Changes auto-saved!")
 
 st.markdown("---")
+
 csv_data = st.session_state.order_df.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
-    label="📥 Export Full Ledger (CSV / Excel)",
+    label="📥 Download Master Order Ledger (CSV / Excel)",
     data=csv_data,
-    file_name="order_financial_ledger.csv",
+    file_name="LionIndustry_Underwear_Orders.csv",
     mime="text/csv",
 )
