@@ -5,41 +5,55 @@ import streamlit as st
 DATA_FILE = "lion_orders_data.csv"
 
 st.set_page_config(
-    page_title="LionIndustry - Underwear OEM Order Management System",
+    page_title="LION INDUSTRY - Underwear OEM Order Management System",
     page_icon="👙",
     layout="wide",
 )
 
-st.title("👙 LionIndustry Order & Operations Tracker")
+st.title("👙 LION INDUSTRY Order & Operations Tracker")
 st.caption(
-    "End-to-End Workflow & Tax Refund Management (Brand Owner ↔ LionIndustry ↔ Manufacturer)"
+    "End-to-End Workflow & Tax Refund Management (Brand Owner ↔ LION INDUSTRY ↔ Manufacturer)"
 )
 
-# Define the exact 21 workflow stages provided
+# Define the exact workflow stages
 WORKFLOW_STAGES = [
-    # Phase 1: Pre-PO
     "1. Sample Received",
     "2. Price Quoted",
     "3. Price Agreed by Buyer",
-    # Phase 2: PO & Sampling
     "4. PO Issued & Advance Payment",
     "5. Prototype Sample (Making/Shipped/Approved)",
     "6. Fitting Sample (Making/Shipped/Approved)",
     "7. Pre-Production Sample (Making/Shipped/Approved)",
-    # Phase 3: Production & Shipping
     "8. Bulk Production in Progress",
     "9. Goods Ready",
     "10. Inspection Completed & Approved",
     "11. Balance Payment Received",
     "12. Shipping Booked & Goods Shipped",
     "13. Forwarder Paid",
-    # Phase 4: Customs, VAT & Tax Refund
     "14. B/L & Customs Declaration Received",
     "15. Factory VAT Receipts Received",
     "16. Tax Return Applied & Completed",
 ]
 
-# Sample Initial Data tailored for Underwear OEM
+# Standard default columns structure
+DEFAULT_COLUMNS = [
+    "Order PO #",
+    "Brand Owner / Buyer",
+    "Manufacturer / Factory",
+    "Item Description",
+    "Current Stage",
+    "PPS Approval",
+    "Inspection Status",
+    "Advance Payment",
+    "Balance Payment",
+    "Customs Declaration",
+    "Factory VAT Receipt",
+    "Tax Refund Status",
+    "Total PO Amount ($)",
+    "Deposit Received ($)",
+    "Notes",
+]
+
 DEFAULT_DATA = [
     {
         "Order PO #": "PO-2026-UW01",
@@ -69,7 +83,7 @@ DEFAULT_DATA = [
         "Advance Payment": "Received",
         "Balance Payment": "Received",
         "Customs Declaration": "Received",
-        "Factory VAT Receipt": "Missing",  # Risk Alert: Missing VAT Receipt
+        "Factory VAT Receipt": "Missing",
         "Tax Refund Status": "Pending Filing",
         "Total PO Amount ($)": 32000.0,
         "Deposit Received ($)": 32000.0,
@@ -81,7 +95,12 @@ DEFAULT_DATA = [
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
-            return pd.read_csv(DATA_FILE)
+            df = pd.read_csv(DATA_FILE)
+            # Ensure all required columns exist in the DataFrame
+            for col in DEFAULT_COLUMNS:
+                if col not in df.columns:
+                    df[col] = "Pending" if "Status" in col or "Payment" in col else ""
+            return df[DEFAULT_COLUMNS]
         except Exception:
             return pd.DataFrame(DEFAULT_DATA)
     else:
@@ -99,11 +118,11 @@ if "order_df" not in st.session_state:
 
 df = st.session_state.order_df
 
-# ================= SIDEBAR: ADD & IMPORT ORDERS =================
+# ================= SIDEBAR =================
 with st.sidebar:
     st.header("⚙️ Order Management")
 
-    st.subheader("➕ Create New Order / Sampling Request")
+    st.subheader("➕ Create New Order")
     with st.form("add_order_form", clear_on_submit=True):
         po_num = st.text_input("PO / Sample Tracking #", value="PO-2026-UW03")
         buyer = st.text_input("Brand Owner / Buyer", value="")
@@ -128,9 +147,7 @@ with st.sidebar:
                 "Current Stage": stage,
                 "PPS Approval": "Pending",
                 "Inspection Status": "Pending",
-                "Advance Payment": (
-                    "Received" if dep_amt > 0 else "Pending"
-                ),
+                "Advance Payment": "Received" if dep_amt > 0 else "Pending",
                 "Balance Payment": "Pending",
                 "Customs Declaration": "Missing",
                 "Factory VAT Receipt": "Missing",
@@ -148,22 +165,12 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("---")
-    st.subheader("📂 Batch Import / Export")
-    uploaded_file = st.file_uploader(
-        "Upload Excel / CSV Ledger", type=["csv", "xlsx"]
-    )
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                imported_df = pd.read_csv(uploaded_file)
-            else:
-                imported_df = pd.read_excel(uploaded_file)
-            st.session_state.order_df = imported_df
-            save_data(imported_df)
-            st.success("Ledger imported and updated successfully!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error loading file: {e}")
+    st.subheader("📂 Reset Data")
+    if st.button("Reset to Sample OEM Ledger"):
+        st.session_state.order_df = pd.DataFrame(DEFAULT_DATA)
+        save_data(st.session_state.order_df)
+        st.success("Ledger reset successfully!")
+        st.rerun()
 
 # ================= TOP METRICS & RISKS =================
 total_orders = len(df)
@@ -177,7 +184,6 @@ shipped_orders = df[
     ])
 ]
 
-# Risk Logic: Shipped but missing VAT Receipts from factory
 missing_vat = df[
     df["Current Stage"].isin([
         "12. Shipping Booked & Goods Shipped",
@@ -187,7 +193,6 @@ missing_vat = df[
     & (df["Factory VAT Receipt"] == "Missing")
 ]
 
-# Risk Logic: Shipped & VAT received, but Tax Refund not completed
 pending_tax_refund = df[
     (df["Customs Declaration"] == "Received")
     & (df["Factory VAT Receipt"] == "Received")
@@ -202,7 +207,7 @@ col4.metric("Pending Tax Refunds", f"{len(pending_tax_refund)}")
 
 st.markdown("---")
 
-# ================= RISK & FOLLOW-UP DASHBOARD =================
+# ================= DASHBOARD TABS =================
 st.subheader("🚨 Key Bottlenecks & Critical Action Items")
 
 tab_vat, tab_tax, tab_samples = st.tabs([
@@ -213,9 +218,7 @@ tab_vat, tab_tax, tab_samples = st.tabs([
 
 with tab_vat:
     if not missing_vat.empty:
-        st.error(
-            "Goods are shipped, but the factory has NOT provided VAT invoices needed for tax refund:"
-        )
+        st.error("Goods are shipped, but factory VAT invoices are missing:")
         st.dataframe(
             missing_vat[
                 [
@@ -234,9 +237,7 @@ with tab_vat:
 
 with tab_tax:
     if not pending_tax_refund.empty:
-        st.warning(
-            "Both Customs Declaration & Factory VAT Receipts are ready! Ready to file for Tax Refund:"
-        )
+        st.warning("Customs Declaration & Factory VAT Receipts ready for Tax Refund:")
         st.dataframe(
             pending_tax_refund[
                 [
@@ -277,7 +278,7 @@ with tab_samples:
 
 st.markdown("---")
 
-# ================= MASTER ORDER PIPELINE TABLE =================
+# ================= MASTER TABLE =================
 st.subheader("📊 Master Workflow Table (Double-click any cell to edit)")
 
 edited_df = st.data_editor(
@@ -328,6 +329,6 @@ csv_data = st.session_state.order_df.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
     label="📥 Download Master Order Ledger (CSV / Excel)",
     data=csv_data,
-    file_name="LionIndustry_Underwear_Orders.csv",
+    file_name="LION_INDUSTRY_Underwear_Orders.csv",
     mime="text/csv",
 )
